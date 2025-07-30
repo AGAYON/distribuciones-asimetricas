@@ -403,3 +403,211 @@ def metrica_ponderada(
             "altura_pico": np.nan,
             "ancho_pico": np.nan
         })
+
+# ---------- función automática ----------
+def metrica_ajustada(x, usar_expansion=False, columna_expansion=None, expansion_data=None):
+    """
+    Analiza automáticamente la distribución de datos y determina parámetros óptimos
+    para metrica_ponderada. Toma decisiones inteligentes basadas en las características
+    estadísticas de los datos.
+    
+    Parameters:
+    -----------
+    x : array-like
+        Datos de entrada para análisis
+    usar_expansion : bool
+        Si usar factores de expansión (se pasa directamente)
+    columna_expansion : str
+        Nombre de columna con factores (se pasa directamente)
+    expansion_data : DataFrame/dict
+        Datos con factores de expansión (se pasa directamente)
+        
+    Returns:
+    --------
+    dict : Contiene 'resultado' (Series de metrica_ponderada) y 'diagnostico' (decisiones tomadas)
+    """
+    
+    # ========== ANÁLISIS INICIAL ==========
+    x_clean = pd.Series(x).dropna().values
+    n = len(x_clean)
+    
+    if n < 3:
+        # Muestra muy pequeña - configuración minimalista
+        resultado = metrica_ponderada(x, incluir_moda=False, usar_medida_robusta=True)
+        return {
+            "resultado": resultado,
+            "diagnostico": {"razon": "muestra_muy_pequeña", "n": n}
+        }
+    
+    # Calcular estadísticas básicas
+    media = np.mean(x_clean)
+    mediana = np.median(x_clean)
+    madn_val = madn(x_clean)
+    std_val = np.std(x_clean)
+    
+    # ========== ANÁLISIS DE ASIMETRÍA ==========
+    bowley_asim = abs(bowley_skew(x_clean))
+    sesgo_normalizado = abs(media - mediana) / madn_val if madn_val > 0 else 0
+    
+    # Clasificar nivel de asimetría
+    if bowley_asim < 0.1 and sesgo_normalizado < 0.5:
+        nivel_asimetria = "baja"
+    elif bowley_asim < 0.3 and sesgo_normalizado < 1.0:
+        nivel_asimetria = "moderada"
+    else:
+        nivel_asimetria = "alta"
+    
+    # ========== ANÁLISIS DE CURTOSIS ==========
+    exceso_curt = excess_kurtosis(x_clean)
+    curtosis_significativa = abs(exceso_curt) > 1.0
+    
+    # ========== EVALUACIÓN DE MODA ==========
+    usar_moda = False
+    moda_es_robusta = False
+    
+    if n >= 50:  # Solo evaluar moda con muestra suficiente
+        # Evaluación preliminar de la moda
+        try:
+            moda_info = moda_kde_robusta(
+                x_clean, 
+                usar_expansion=usar_expansion,
+                columna_expansion=columna_expansion,
+                expansion_data=expansion_data,
+                min_peak_height=0.15,  # Más estricto para evaluación
+                min_peak_width=0.05
+            )
+            
+            altura_pico = moda_info["altura_relativa"]
+            ancho_pico = moda_info["ancho_pico"]
+            moda_es_robusta = moda_info["es_robusta"]
+            
+            # Decidir si usar moda basado en robustez y contexto
+            if moda_es_robusta and altura_pico > 2.0:  # Pico muy prominente
+                usar_moda = True
+            elif nivel_asimetria == "alta" and altura_pico > 1.5 and ancho_pico > 0.03:
+                usar_moda = True  # En alta asimetría, criterios más flexibles
+                
+        except Exception:
+            usar_moda = False
+    
+    # ========== SELECCIÓN DE MÉTODOS ==========
+    
+    # 1. Método de mapeo
+    if nivel_asimetria == "baja":
+        method = "linear"  # Más directo para distribuciones simétricas
+    elif nivel_asimetria == "moderada":
+        method = "logistic"  # Balanceado
+    else:
+        method = "exponential"  # Más agresivo para alta asimetría
+    
+    # 2. Método de ponderación (si se usa moda)
+    if usar_moda:
+        if n > 1000 and nivel_asimetria == "alta":
+            weight_method = "convex"
+            convex_method = "exponential"
+        else:
+            weight_method = "softmax"
+    else:
+        weight_method = "softmax"  # No importa si no hay moda
+        convex_method = "inverse_distance"
+    
+    # 3. Usar medidas robustas
+    usar_robusto = sesgo_normalizado > 0.3 or curtosis_significativa
+    
+    # 4. Usar ajustes por curtosis y Bowley
+    use_kurtosis = curtosis_significativa
+    use_bowley = bowley_asim > 0.2
+    
+    # ========== CONFIGURACIÓN DE PARÁMETROS ==========
+    
+    # Parámetros de temperatura/suavizado
+    if nivel_asimetria == "baja":
+        temperature = 1.0  # Menos agresivo
+    elif nivel_asimetria == "moderada":
+        temperature = 0.5  # Balanceado
+    else:
+        temperature = 0.3  # Más agresivo
+    
+    # Parámetros específicos del método
+    if method == "exponential":
+        alpha = 0.693 if nivel_asimetria == "moderada" else 1.2  # Más agresivo para alta asimetría
+        s0, p, s_max = 1.0, 2.0, 2.0  # Valores por defecto
+    elif method == "logistic":
+        alpha = 0.693
+        s0 = 0.8 if nivel_asimetria == "alta" else 1.0  # Punto medio más bajo para alta asimetría
+        p = 3.0 if curtosis_significativa else 2.0  # Pendiente más pronunciada con curtosis
+        s_max = 2.0
+    else:  # linear
+        alpha, s0, p = 0.693, 1.0, 2.0
+        s_max = 1.5 if nivel_asimetria == "baja" else 2.5
+    
+    # Ajuste por tamaño muestral
+    shrink_c = 50.0 if n < 100 else 100.0 if n < 500 else 200.0
+    
+    # Límites de clipeo
+    if nivel_asimetria == "alta":
+        clip = (0.02, 0.98)  # Más permisivo
+    elif nivel_asimetria == "moderada":
+        clip = (0.05, 0.95)  # Estándar
+    else:
+        clip = (0.1, 0.9)   # Más conservador
+    
+    # ========== EJECUTAR MÉTRICA PONDERADA ==========
+    resultado = metrica_ponderada(
+        x=x,
+        method=method,
+        usar_medida_robusta=usar_robusto,
+        usar_transformacion_no_lineal=True,
+        ajustar_por_n=True,
+        use_kurtosis=use_kurtosis,
+        use_bowley=use_bowley,
+        incluir_moda=usar_moda,
+        moda_robusta=usar_moda,  # Si usamos moda, que sea robusta
+        weight_method=weight_method,
+        convex_method=convex_method,
+        temperature=temperature,
+        alpha=alpha,
+        s0=s0,
+        p=p,
+        s_max=s_max,
+        shrink_c=shrink_c,
+        clip=clip,
+        # Parámetros de moda robusta
+        usar_expansion=usar_expansion,
+        columna_expansion=columna_expansion,
+        expansion_data=expansion_data,
+        min_peak_height=0.1,
+        min_peak_width=0.05
+    )
+    
+    # ========== DIAGNÓSTICO ==========
+    diagnostico = {
+        "n": n,
+        "nivel_asimetria": nivel_asimetria,
+        "bowley_asimetria": bowley_asim,
+        "sesgo_normalizado": sesgo_normalizado,
+        "exceso_curtosis": exceso_curt,
+        "curtosis_significativa": curtosis_significativa,
+        "usar_moda": usar_moda,
+        "moda_robusta": moda_es_robusta,
+        "parametros_elegidos": {
+            "method": method,
+            "weight_method": weight_method,
+            "convex_method": convex_method,
+            "usar_medida_robusta": usar_robusto,
+            "use_kurtosis": use_kurtosis,
+            "use_bowley": use_bowley,
+            "temperature": temperature,
+            "alpha": alpha,
+            "s0": s0,
+            "p": p,
+            "s_max": s_max,
+            "shrink_c": shrink_c,
+            "clip": clip
+        }
+    }
+    
+    return {
+        "resultado": resultado,
+        "diagnostico": diagnostico
+    }
