@@ -507,9 +507,10 @@ def metrica_ajustada(x, usar_expansion=False, columna_expansion=None, expansion_
             convex_method = "exponential"
         else:
             weight_method = "softmax"
+            convex_method = "inverse_distance"  # Valor por defecto
     else:
         weight_method = "softmax"  # No importa si no hay moda
-        convex_method = "inverse_distance"
+        convex_method = "inverse_distance"  # Valor por defecto
     
     # 3. Usar medidas robustas
     usar_robusto = sesgo_normalizado > 0.3 or curtosis_significativa
