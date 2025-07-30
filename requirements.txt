@@ -1,0 +1,4 @@
+# librerias necesarias
+numpy
+pandas
+scipy

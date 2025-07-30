@@ -1,0 +1,11 @@
+# Inorar carpeta de entorno virtual
+.venv/
+
+# Inorar carpeta de caché de pip
+__pycache__/
+
+# Inorar archivos de caché de Python
+*.pyc
+
+# Ignorar carpeta de insumos
+insumos/
