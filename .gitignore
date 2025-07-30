@@ -9,3 +9,8 @@ __pycache__/
 
 # Ignorar carpeta de insumos
 insumos/
+
+# Ignorar archivos csv, xlsx etc
+*.csv
+*.xlsx
+*.xls
