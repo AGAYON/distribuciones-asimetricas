@@ -68,6 +68,14 @@ def weight_logistic(s, s0=1.0, p=2.0):
     w_mean = 1.0 / (1.0 + (s / max(s0, 1e-12))**p)
     return float(np.clip(w_mean, 0.0, 1.0))
 
+def weight_linear(s, s_max=2.0):
+    """
+    Mapeo lineal del sesgo a peso de la media.
+    s_max define el punto donde el peso se vuelve 0.
+    """
+    w_mean = max(0.0, 1.0 - s / max(s_max, 1e-12))
+    return float(np.clip(w_mean, 0.0, 1.0))
+
 def adjust_by_kurtosis(w_mean, g2, beta=0.25):
     """
     Penaliza el peso de la media según el exceso de curtosis.
@@ -98,15 +106,16 @@ def metrica_ponderada(
     usar_transformacion_no_lineal=True,
     ajustar_por_n=True,
     use_kurtosis=False,
+    use_bowley=False,
     incluir_moda=False,
     temperature=0.5,
-    alpha=0.693, s0=1.0, p=2.0,
+    alpha=0.693, s0=1.0, p=2.0, s_max=2.0,
     shrink_c=100.0,
     clip=(0.05, 0.95)
 ):
     """
     Calcula una tendencia central ponderada entre media, mediana y (opcionalmente) moda,
-    con pesos adaptativos según asimetría y curtosis.
+    con pesos adaptativos según asimetría, curtosis y asimetría robusta de Bowley.
     """
     x = pd.Series(x).dropna().values
     n = len(x)
@@ -127,6 +136,9 @@ def metrica_ponderada(
     s2 = 0.0 if escala == 0 or not incluir_moda else abs(mediana - moda) / escala
     s3 = 0.0 if escala == 0 or not incluir_moda else abs(media - moda) / escala
 
+    # Calcular asimetría de Bowley para ajustes adicionales
+    bowley_asimetria = bowley_skew(x)
+    
     if ajustar_por_n:
         s1 = shrink_s_by_n(s1, n, c=shrink_c)
         s2 = shrink_s_by_n(s2, n, c=shrink_c)
@@ -144,7 +156,7 @@ def metrica_ponderada(
             "mediana": mediana,
             "moda": moda,
             "MADN": escala,
-            "bowley": bowley_skew(x),
+            "bowley": bowley_asimetria,
             "exceso_kurtosis": g2,
             "s1_median_mean": s1,
             "s2_median_mode": s2,
@@ -160,13 +172,20 @@ def metrica_ponderada(
                 w_media = weight_exponential(s1, alpha=alpha)
             elif method == "logistic":
                 w_media = weight_logistic(s1, s0=s0, p=p)
+            elif method == "linear":
+                w_media = weight_linear(s1, s_max=s_max)
             else:
-                raise ValueError("method debe ser 'exponential' o 'logistic'")
+                raise ValueError("method debe ser 'exponential', 'logistic' o 'linear'")
         else:
             w_media = max(0.0, 1.0 - s1)
 
         if use_kurtosis:
             w_media = adjust_by_kurtosis(w_media, g2, beta=0.25)
+            
+        # Ajuste adicional usando la asimetría de Bowley
+        if use_bowley:
+            bowley_factor = np.exp(-0.2 * abs(bowley_asimetria))  # Penalización por asimetría de Bowley
+            w_media = w_media * bowley_factor
 
         lo, hi = clip
         w_media = float(np.clip(w_media, lo, hi))
@@ -179,7 +198,7 @@ def metrica_ponderada(
             "mediana": mediana,
             "moda": np.nan,
             "MADN": escala,
-            "bowley": bowley_skew(x),
+            "bowley": bowley_asimetria,
             "exceso_kurtosis": g2,
             "s_robusto": s1,
             "peso_media": w_media,
