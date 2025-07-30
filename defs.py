@@ -52,7 +52,8 @@ def moda_kde(x, bw_method='scott'):
     dens = kde(grid)
     return float(grid[np.argmax(dens)])
 
-def moda_kde_robusta(x, bw_method='scott', grid_size=2000, expansion_factor=1.2, 
+def moda_kde_robusta(x, bw_method='scott', grid_size=2000, usar_expansion=False,
+                     columna_expansion=None, expansion_data=None, expansion_factor=1.2,
                      min_peak_height=0.1, min_peak_width=0.05):
     """
     Estima la moda robusta con validación de estabilidad del pico.
@@ -65,8 +66,14 @@ def moda_kde_robusta(x, bw_method='scott', grid_size=2000, expansion_factor=1.2,
         Método de ancho de banda para KDE
     grid_size : int
         Tamaño de la grilla para evaluación
+    usar_expansion : bool
+        Si usar factores de expansión individuales por observación
+    columna_expansion : str
+        Nombre de la columna con factores de expansión (si usar_expansion=True)
+    expansion_data : DataFrame or dict
+        Datos que contienen la columna de expansión
     expansion_factor : float
-        Factor de expansión del rango de datos para el grid
+        Factor de expansión fijo si usar_expansion=False
     min_peak_height : float
         Altura mínima relativa del pico (respecto al máximo)
     min_peak_width : float
@@ -80,12 +87,31 @@ def moda_kde_robusta(x, bw_method='scott', grid_size=2000, expansion_factor=1.2,
     if len(x) < 3:
         return {"moda": np.median(x), "altura_relativa": 0.0, "ancho_pico": 0.0, "es_robusta": False}
     
+    # Manejar factores de expansión
+    if usar_expansion and columna_expansion is not None and expansion_data is not None:
+        if hasattr(expansion_data, columna_expansion):  # DataFrame
+            factores = expansion_data[columna_expansion].values
+        elif isinstance(expansion_data, dict) and columna_expansion in expansion_data:  # Dict
+            factores = np.array(expansion_data[columna_expansion])
+        else:
+            factores = np.ones(len(x))  # Fallback a factores unitarios
+            
+        # Asegurar que tenemos el mismo número de factores que datos
+        if len(factores) != len(x):
+            factores = np.ones(len(x))  # Fallback
+            
+        # Aplicar factores de expansión como pesos en el KDE
+        kde = gaussian_kde(x, bw_method=bw_method, weights=factores/np.sum(factores))
+        expansion_range = np.mean(factores)  # Usar promedio de factores para expansión de grid
+    else:
+        kde = gaussian_kde(x, bw_method=bw_method)
+        expansion_range = expansion_factor
+    
     # KDE con grid expandido
-    kde = gaussian_kde(x, bw_method=bw_method)
     x_min, x_max = np.min(x), np.max(x)
     rango = x_max - x_min
-    grid_min = x_min - (expansion_factor - 1) * rango / 2
-    grid_max = x_max + (expansion_factor - 1) * rango / 2
+    grid_min = x_min - (expansion_range - 1) * rango / 2
+    grid_max = x_max + (expansion_range - 1) * rango / 2
     grid = np.linspace(grid_min, grid_max, grid_size)
     dens = kde(grid)
     
@@ -205,32 +231,44 @@ def convex_weights(distances, method='inverse_distance', alpha=2.0):
 
 # ---------- métrica principal ----------
 def metrica_ponderada(
-    x,
-    method="logistic",
-    usar_medida_robusta=True,
-    usar_transformacion_no_lineal=True,
-    ajustar_por_n=True,
-    use_kurtosis=False,
-    use_bowley=False,
-    incluir_moda=False,
-    moda_robusta=False,
-    weight_method='softmax',  # 'softmax' o 'convex'
-    convex_method='inverse_distance',
-    temperature=0.5,
-    alpha=0.693, s0=1.0, p=2.0, s_max=2.0,
-    shrink_c=100.0,
-    clip=(0.05, 0.95),
+    x,                                    # Datos de entrada (array-like)
+    method="logistic",                    # Método de mapeo: 'exponential', 'logistic', 'linear'
+    usar_medida_robusta=True,            # Usar MADN en lugar de desviación estándar
+    usar_transformacion_no_lineal=True,  # Aplicar transformación no lineal a los pesos
+    ajustar_por_n=True,                  # Ajustar sesgos por tamaño muestral
+    use_kurtosis=False,                  # Penalizar peso de media por exceso de curtosis
+    use_bowley=False,                    # Aplicar ajuste por asimetría de Bowley
+    incluir_moda=False,                  # Incluir moda en el cálculo ponderado
+    moda_robusta=False,                  # Validar robustez del pico de la moda
+    weight_method='softmax',             # Método de ponderación: 'softmax' o 'convex'
+    convex_method='inverse_distance',    # Tipo de peso convexo si weight_method='convex'
+    temperature=0.5,                     # Parámetro de temperatura/suavizado
+    alpha=0.693,                         # Parámetro alpha para mapeo exponential
+    s0=1.0,                             # Punto medio para mapeo logistic
+    p=2.0,                              # Pendiente para mapeo logistic
+    s_max=2.0,                          # Máximo para mapeo linear
+    shrink_c=100.0,                     # Constante de ajuste por tamaño muestral
+    clip=(0.05, 0.95),                  # Límites para clipear pesos finales
     # Parámetros para moda robusta
-    bw_method='scott', grid_size=2000, expansion_factor=1.2,
-    min_peak_height=0.1, min_peak_width=0.05
+    bw_method='scott',                   # Método de ancho de banda para KDE
+    grid_size=2000,                     # Tamaño de grilla para evaluación KDE
+    usar_expansion=False,               # Usar factores de expansión individuales
+    columna_expansion=None,             # Nombre de columna con factores de expansión
+    expansion_data=None,                # DataFrame/dict con datos de expansión
+    expansion_factor=1.2,               # Factor de expansión fijo si usar_expansion=False
+    min_peak_height=0.1,                # Altura mínima relativa del pico
+    min_peak_width=0.05                 # Ancho mínimo relativo del pico
 ):
     """
     Calcula una tendencia central ponderada entre media, mediana y (opcionalmente) moda,
     con pesos adaptativos según asimetría, curtosis y asimetría robusta de Bowley.
-    Parámetros:
+    
+    Características principales:
     - Moda robusta con validación de estabilidad del pico
-    - Métodos de ponderación: softmax y convex weights
-    - Control de robustez de la moda basado en altura y ancho del pico
+    - Métodos de ponderación: softmax y convex weights  
+    - Control de robustez basado en altura y ancho del pico
+    - Ajustes por curtosis, asimetría de Bowley y tamaño muestral
+    - Soporte para factores de expansión individuales por observación
     """
     x = pd.Series(x).dropna().values
     n = len(x)
@@ -250,6 +288,9 @@ def metrica_ponderada(
     if incluir_moda:
         if moda_robusta:
             moda_info = moda_kde_robusta(x, bw_method=bw_method, grid_size=grid_size,
+                                       usar_expansion=usar_expansion,
+                                       columna_expansion=columna_expansion,
+                                       expansion_data=expansion_data,
                                        expansion_factor=expansion_factor,
                                        min_peak_height=min_peak_height,
                                        min_peak_width=min_peak_width)
