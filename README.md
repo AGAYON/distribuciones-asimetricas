@@ -1,6 +1,8 @@
 # distribuciones-asimetricas
 ## Busqueda de representatividad en datos atómicos para todo tipo de distribuciones
 
+### ¿Quieres encontrar un dato que represente a tu muestra/población lo mejor posible?
+
 Bienvenido/a al repositorio de distribuciones asimétricas, un proyecto creado para explorar, analizar y trabajar con distribuciones de datos que no siguen la clásica simetría de la campana de Gauss.
 
 ## Objetivo principal
