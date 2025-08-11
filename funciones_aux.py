@@ -4,8 +4,10 @@ import defs
 from defs import metrica_ajustada, bowley_skew, excess_kurtosis, madn
 from defs2 import metrica_ajustada_v2
 import pandas as pd
-from typing import List, Tuple, Dict
-from scipy.stats import wilcoxon
+from typing import List, Tuple, Dict, Optional
+from scipy.stats import wilcoxon, norm
+from math import comb
+
 
 # Función util para recortar 5% por cola
 def trim_xy(x, prop=0.05):
@@ -298,3 +300,6 @@ def columnas_comparacion_default() -> List[Tuple[str, str]]:
         ("d_mp2_vs_median", "V2 vs Mediana"),
         ("d_v2_vs_v1",      "V2 vs V1"),
     ]
+
+
+
