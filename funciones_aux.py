@@ -14,9 +14,24 @@ def trim_xy(x, prop=0.05):
     x = np.sort(np.asarray(x))
     n = len(x)
     k = int(np.floor(prop * n))
-    if n - 2*k <= 0:
+    if n - k <= 0:
         return x.copy()
+    # Recorte unilateral: si side='left' quita los k menores, si side='right' quita los k mayores
+    # Por defecto, recorte simétrico
     return x[k:n-k]
+
+def trim_unilateral(x, prop=0.05, side='left'):
+    x = np.sort(np.asarray(x))
+    n = len(x)
+    k = int(np.floor(prop * n))
+    if n - k <= 0:
+        return x.copy()
+    if side == 'left':
+        return x[k:]
+    elif side == 'right':
+        return x[:n-k]
+    else:
+        return x.copy()
 
 # Bloque 1: generadores de datos (familias) + inyección de outliers
 
@@ -136,33 +151,41 @@ def eval_one_sim(sim_id, rng, trim_prop=0.05):
     x = draw_sample(fam, params, n, rng)
     x, tuvo_outliers, n_out = maybe_inject_outliers(x, rng)
 
-    # vector trim
-    x_trim = trim_xy(x, prop=trim_prop)
+    # Recortes unilaterales
+    from funciones_aux import trim_unilateral
+    x_trim_left = trim_unilateral(x, prop=trim_prop, side='left')
+    x_trim_right = trim_unilateral(x, prop=trim_prop, side='right')
 
-    # baselines
+    # Baselines
     mean_full = float(np.mean(x))
-    mean_trim = float(np.mean(x_trim))
     median_full = float(np.median(x))
-    median_trim = float(np.median(x_trim))
+    mp1_full = float(metrica_ajustada(x)["resultado"]["tendencia_ponderada"])
+    mp2_full = float(metrica_ajustada_v2(x)["resultado"]["tendencia_ponderada"])
 
-    delta_mean = abs(mean_full - mean_trim)
-    delta_median = abs(median_full - median_trim)
+    # Recorte izquierda
+    mean_left = float(np.mean(x_trim_left))
+    median_left = float(np.median(x_trim_left))
+    mp1_left = float(metrica_ajustada(x_trim_left)["resultado"]["tendencia_ponderada"])
+    mp2_left = float(metrica_ajustada_v2(x_trim_left)["resultado"]["tendencia_ponderada"])
 
-    # métrica V1 (defs.py)
-    res_v1_full = metrica_ajustada(x)["resultado"]
-    res_v1_trim = metrica_ajustada(x_trim)["resultado"]
-    mp1_full = float(res_v1_full["tendencia_ponderada"])
-    mp1_trim = float(res_v1_trim["tendencia_ponderada"])
-    delta_mp1 = abs(mp1_full - mp1_trim)
+    # Recorte derecha
+    mean_right = float(np.mean(x_trim_right))
+    median_right = float(np.median(x_trim_right))
+    mp1_right = float(metrica_ajustada(x_trim_right)["resultado"]["tendencia_ponderada"])
+    mp2_right = float(metrica_ajustada_v2(x_trim_right)["resultado"]["tendencia_ponderada"])
 
-    # métrica V2 (defs2.py)
-    res_v2_full = metrica_ajustada_v2(x)["resultado"]
-    res_v2_trim = metrica_ajustada_v2(x_trim)["resultado"]
-    mp2_full = float(res_v2_full["tendencia_ponderada"])
-    mp2_trim = float(res_v2_trim["tendencia_ponderada"])
-    delta_mp2 = abs(mp2_full - mp2_trim)
+    # Deltas de estabilidad
+    delta_mean_left = abs(mean_full - mean_left)
+    delta_median_left = abs(median_full - median_left)
+    delta_mp1_left = abs(mp1_full - mp1_left)
+    delta_mp2_left = abs(mp2_full - mp2_left)
 
-    # diagnósticos básicos
+    delta_mean_right = abs(mean_full - mean_right)
+    delta_median_right = abs(median_full - median_right)
+    delta_mp1_right = abs(mp1_full - mp1_right)
+    delta_mp2_right = abs(mp2_full - mp2_right)
+
+    # Diagnósticos básicos
     skew_emp = bowley_skew(x)
     kurt_emp = excess_kurtosis(x)
 
@@ -177,17 +200,26 @@ def eval_one_sim(sim_id, rng, trim_prop=0.05):
         kurtosis=kurt_emp,
         # valores full
         mean_full=mean_full, median_full=median_full, mp1_full=mp1_full, mp2_full=mp2_full,
-        # valores trimmed
-        mean_trim=mean_trim, median_trim=median_trim, mp1_trim=mp1_trim, mp2_trim=mp2_trim,
-        # deltas de estabilidad
-        delta_mean=delta_mean, delta_median=delta_median, delta_mp1=delta_mp1, delta_mp2=delta_mp2,
-        # mejoras de cada métrica vs baselines
-        d_mp1_vs_mean=(delta_mean - delta_mp1),
-        d_mp2_vs_mean=(delta_mean - delta_mp2),
-        d_mp1_vs_median=(delta_median - delta_mp1),
-        d_mp2_vs_median=(delta_median - delta_mp2),
-        # comparación directa V1 vs V2 (positivo => V2 más estable)
-        d_v2_vs_v1=(delta_mp1 - delta_mp2),
+        # valores recorte izquierda
+        mean_left=mean_left, median_left=median_left, mp1_left=mp1_left, mp2_left=mp2_left,
+        # valores recorte derecha
+        mean_right=mean_right, median_right=median_right, mp1_right=mp1_right, mp2_right=mp2_right,
+        # deltas de estabilidad izquierda
+        delta_mean_left=delta_mean_left, delta_median_left=delta_median_left, delta_mp1_left=delta_mp1_left, delta_mp2_left=delta_mp2_left,
+        # deltas de estabilidad derecha
+        delta_mean_right=delta_mean_right, delta_median_right=delta_median_right, delta_mp1_right=delta_mp1_right, delta_mp2_right=delta_mp2_right,
+        # mejoras de cada métrica vs baselines (izquierda)
+        d_mp1_vs_mean_left=(delta_mean_left - delta_mp1_left),
+        d_mp2_vs_mean_left=(delta_mean_left - delta_mp2_left),
+        d_mp1_vs_median_left=(delta_median_left - delta_mp1_left),
+        d_mp2_vs_median_left=(delta_median_left - delta_mp2_left),
+        d_v2_vs_v1_left=(delta_mp1_left - delta_mp2_left),
+        # mejoras de cada métrica vs baselines (derecha)
+        d_mp1_vs_mean_right=(delta_mean_right - delta_mp1_right),
+        d_mp2_vs_mean_right=(delta_mean_right - delta_mp2_right),
+        d_mp1_vs_median_right=(delta_median_right - delta_mp1_right),
+        d_mp2_vs_median_right=(delta_median_right - delta_mp2_right),
+        d_v2_vs_v1_right=(delta_mp1_right - delta_mp2_right),
         params=params
     )
     return row
