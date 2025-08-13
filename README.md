@@ -9,7 +9,7 @@ Bienvenido/a al repositorio de **análisis robusto de distribuciones asimétrica
 
 Imagínate esto: tienes datos de ingresos, precios, tiempos de respuesta, o cualquier variable económica/social. Calculas el promedio y sientes que **no representa realmente** lo que vive la mayoría de tu población. ¿Te suena familiar?
 
-**El problema:** La media aritmética se "infla" con valores extremos y en distribuciones asimétricas puede estar muy lejos de lo que experimenta el ciudadano/cliente/usuario típico.
+**El problema:** La media aritmética se "infla" (o se "poncha") con valores extremos y en distribuciones asimétricas puede estar muy lejos de lo que experimenta el ciudadano/cliente/usuario típico.
 
 **La propuesta:** Una **métrica ponderada inteligente** que combina automáticamente media, mediana y (cuando es apropiado) moda, adaptándose a las características específicas de tu distribución.
 
@@ -67,12 +67,27 @@ Un análisis **académico completo** usando datos reales de salarios mexicanos:
 Las funciones principales que hacen toda la magia:
 - `metrica_ajustada()` - Análisis automático completo
 - `metrica_ponderada()` - Control manual para usuarios avanzados
-- Funciones auxiliares robustas para todos los cálculos ## 🚀 ¿Por dónde empezar?
+- Funciones auxiliares robustas para todos los cálculos 
+
+### **`defs2.py`** - El motor matemático al cuadrado
+Ajustes a la métrica, original. Es el archivo en el cual
+implemento las mejoras que espero terminen integradas en defs.py
+
+### **`prueba_estabilidad.ipynb`** - Robustez y comparación de métricas  
+Un análisis **experimental** para validar la estabilidad de las métricas propuestas:
+- 🧪 **Simulación masiva** de distribuciones y recortes de datos
+- ⚔️ **Comparación directa** entre métricas ponderadas, media y mediana
+- 📊 **Resumenes y visualizaciones** de victorias, diferencias y significancia estadística
+- 🏆 **Tests Wilcoxon** para demostrar superioridad estadística
+- 🔍 **Conclusiones claras** sobre los resultados obtenidos
+
+
+## 🚀 ¿Por dónde empezar?
 
 ### **Para usuarios que quieren resultados rápidos:**
 1. Abre `uso_general.ipynb`
 2. Carga tus datos
-3. Ejecuta `analizar_datos_completo(tus_datos)`
+3. Ejecuta
 4. ¡Listo! Ya tienes tu métrica representativa con explicación completa
 
 ### **Para usuarios que quieren entender la metodología:**
@@ -96,7 +111,7 @@ Las funciones principales que hacen toda la magia:
 
 ## 🌟 ¿Por qué este proyecto es especial?
 
-1. **🎯 Nació de una necesidad real**, (y de un capricho matemático)
+1. **🎯 Nació de una necesidad real**, (y de un capricho personal)
 2. **🤖 Es completamente automático** - no necesitas ser estadístico para usarlo
 3. **📚 Tiene fundamento teórico sólido** - (se acepta ayuda para citar correctamente)
 4. **🔧 Es flexible** - desde uso automático hasta control total avanzado
