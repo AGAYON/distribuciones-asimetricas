@@ -3,7 +3,7 @@
 
 ### ¿Tu promedio no cuenta toda la historia? Aquí está la solución.
 
-Bienvenido/a al repositorio de **análisis robusto de distribuciones asimétricas**, un proyecto nacido de una necesidad real: encontrar una métrica más representativa que la media aritmética para datos de salarios en México, pero que creció hasta convertirse en una herramienta general para **cualquier distribución que se salga de lo "normal"**.
+Bienvenido/a al repositorio de **análisis robusto de distribuciones asimétricas**, un proyecto nacido de una necesidad real: encontrar una métrica más representativa que la media aritmética para datos de salarios en México, pero que creció hasta convertirse en una herramienta general para **cualquier distribución que se salga de lo "normal"** (exceptuando distribuciones bimodales).
 
 ## 🚀 ¿Qué problema se resuelve?
 
